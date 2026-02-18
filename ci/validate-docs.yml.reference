@@ -1,0 +1,29 @@
+name: Repository Validation
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  validate-structure:
+    name: Validate Root Structure
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check root directory structure
+        run: bash scripts/validate-root-structure.sh
+
+  validate-docs:
+    name: Validate Required Documentation
+    runs-on: ubuntu-latest
+    needs: validate-structure
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check required docs exist
+        run: bash apparel_platform_backend/scripts/validate-doc-structure.sh
