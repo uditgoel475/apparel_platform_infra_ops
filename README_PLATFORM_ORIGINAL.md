@@ -25,6 +25,37 @@ Multi-tenant SaaS ERP for apparel businesses. Modular architecture with feature 
 | Configurations | `module.config.enabled` | `/config/*` |
 | Analytics Dashboard | `module.analytics.enabled` | `/dashboard/*` |
 
+---
+
+## Optional Features (Add-ons)
+
+These features are disabled by default and must be explicitly enabled per tenant:
+
+| Feature | Flag Key | Parent Module | Default |
+|---------|----------|---------------|---------|
+| Inventory Alerts | `feature.inventory_alerts.enabled` | Catalog | Disabled |
+| Purchase Orders | `feature.purchase_orders.enabled` | Suppliers | Disabled |
+| Product Variants | `feature.product_variants.enabled` | Catalog | Disabled |
+| Scheduled Reports | `feature.scheduled_reports.enabled` | Analytics | Disabled |
+| Webhooks | `feature.webhooks.enabled` | — | Disabled |
+
+### Client Onboarding (Initial Phase)
+
+Every new client gets:
+- All 7 core modules enabled by default
+- All infrastructure (rate limiting, audit trail, error boundaries)
+- Zero optional features (all disabled)
+
+### Enabling Add-ons
+
+SUPERADMIN steps to enable a feature for a tenant:
+
+1. `PATCH /api/admin/tenants/:tenantId/entitlements` with `{ "moduleKey": "feature.xxx.enabled", "enabled": true }`
+2. Verify via `GET /api/feature-flags/detailed`
+3. Frontend picks up the flag on next poll cycle (60s)
+
+---
+
 ## Quick Start
 
 ```bash
@@ -87,6 +118,8 @@ Every new module **must** include all of the following before merge:
 6. **Documentation entry** — Add check to `apparel_platform_backend/scripts/validate-doc-structure.sh`
 7. **DB entitlement + Unleash flag** — Migration row + `scripts/feature-flags/seed-unleash-flags.sh`
 
+For optional sub-features (not full modules), use the Feature Registry pattern instead. See `src/modules/feature-flags/module-registry.ts` → `FEATURE_REGISTRY`.
+
 See `.cursor/rules/new-module-checklist.mdc` for enforcement.
 
 ---
@@ -95,6 +128,12 @@ See `.cursor/rules/new-module-checklist.mdc` for enforcement.
 
 ```bash
 bash apparel_platform_backend/scripts/validate-doc-structure.sh
+```
+
+```bash
+# TypeScript + build validation
+cd apparel_platform_backend && npx tsc --noEmit && npx nest build
+cd apparel_platform_frontend && npx tsc --noEmit && npx vite build
 ```
 
 ---
@@ -114,6 +153,7 @@ apparel-platform-2/
 │   │   └── flag-operations/        # Flag seeding, toggling, kill switch
 │   ├── scripts/
 │   │   ├── feature-flags/          # seed-unleash-flags.sh
+│   │   ├── backup-db.sh            # Database backup with retention
 │   │   └── validate-doc-structure.sh
 │   ├── test-matrix/                # Permutation testing guides
 │   └── src/modules/                # NestJS modules

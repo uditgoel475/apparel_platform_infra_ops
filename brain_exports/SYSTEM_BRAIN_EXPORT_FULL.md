@@ -366,10 +366,24 @@ isEnabled(flagKey, user)
     │    │
     │    └─ Not found → fall through
     │
-    └─ Tier 3: ModuleRegistry Default
-         getModuleByKey(flagKey).defaultEnabled
-         All 7 modules default to: true (FAIL-OPEN)
+    └─ Tier 3: Registry Default
+         getDefaultForKey(flagKey)
+         Module flags (`module.*`): true (FAIL-OPEN)
+         Feature flags (`feature.*`): false (FAIL-CLOSED)
+         + Parent-module gating for features
 ```
+
+**Feature Registry (Two-Tier Flag System):**
+
+The system now supports two tiers of flags:
+- **Module flags** (`module.*`, 7 keys): Core modules, default `true`, fail-open
+- **Feature flags** (`feature.*`, 5 keys): Optional add-ons, default `false`, fail-closed
+
+Feature flags support parent-module gating: if `module.catalog.enabled = false`, then `feature.inventory_alerts.enabled` is automatically `false` regardless of its own flag state.
+
+`getAllFlags()` returns all 12 keys. `ALL_FLAG_KEYS = [...MODULE_KEYS, ...FEATURE_KEYS]`.
+
+**File:** `src/modules/feature-flags/module-registry.ts` (`FEATURE_REGISTRY`, `getDefaultForKey()`)
 
 ### Frontend (Four-Tier Cascade)
 
@@ -663,9 +677,9 @@ Two-job pipeline on push/PR to `main`/`develop`:
 
 ## Technical Debt
 
-1. **No global error boundary in frontend.** Only `FeatureErrorBoundary` exists inside `FeatureGuard`. A throw in any non-guarded component (login page, shell layout itself, theme provider) crashes the entire app with a white screen.
+1. ~~**No global error boundary in frontend.**~~ **RESOLVED.** `GlobalErrorBoundary` added wrapping the entire app in `App.tsx`. Catches uncaught React errors and renders a "Something went wrong" fallback with reload button.
 
-2. **All page components eagerly imported in App.tsx.** No `React.lazy()`, no code splitting. The entire app loads on first paint regardless of which module the user needs. Bundle size grows linearly with every new page.
+2. ~~**All page components eagerly imported in App.tsx.**~~ **RESOLVED.** All 15 page components now use `React.lazy()` with `<Suspense>`. Build output shows separate chunks per page.
 
 3. **No API response validation.** Frontend trusts backend responses completely. No Zod, no io-ts, no runtime type checking. A backend schema change silently breaks the frontend.
 
@@ -677,11 +691,11 @@ Two-job pipeline on push/PR to `main`/`develop`:
 
 7. **JWT secret is a static string.** No key rotation mechanism. Same secret across all environments in default config.
 
-8. **No database backup strategy.** Docker volume `pgdata` is the only copy. No pg_dump cron, no WAL archiving, no point-in-time recovery.
+8. ~~**No database backup strategy.**~~ **RESOLVED.** `scripts/backup-db.sh` performs `pg_dump --format=custom` with configurable retention (default: last 7 backups).
 
 9. **No migration rollback strategy.** Prisma migrations are forward-only. No down migration files. A bad migration requires manual SQL.
 
-10. **No request rate limiting or throttling.** A single client can overwhelm the API.
+10. ~~**No request rate limiting or throttling.**~~ **RESOLVED.** `@nestjs/throttler` with 100 requests/60s limit. Health endpoint exempted via `@SkipThrottle()`.
 
 ## Scaling Bottlenecks
 
@@ -705,7 +719,7 @@ Two-job pipeline on push/PR to `main`/`develop`:
 ## Manual Ops Risks
 
 1. **Unleash flag seeding is manual.** Must run `seed-unleash-flags.sh` after deployment. If forgotten, flags don't exist in Unleash and system falls to DB/defaults.
-2. **Client onboarding is manual.** Must insert `module_entitlements` rows via SQL. No admin UI for entitlement management.
+2. ~~**Client onboarding is manual.**~~ **PARTIALLY RESOLVED.** Tenant Admin API (`/api/admin/tenants`) enables SUPERADMIN to create tenants and toggle entitlements via REST API. Direct SQL no longer required.
 3. **No automated database migration on deploy.** Must manually run `npx prisma migrate deploy`.
 
 ## Feature Flag Misuse Risk
@@ -790,13 +804,13 @@ Two-job pipeline on push/PR to `main`/`develop`:
 | Dimension | Score | Justification |
 |-----------|-------|---------------|
 | Architecture complexity | 7/10 | Modular monolith with feature flags, fail-safe cascades, multi-tier caching, WebSockets, session conflict resolution |
-| Operational maturity | 4/10 | Good runbooks and validation scripts, but no CI test pipeline, no database backups, no monitoring, no alerting, no APM, no log aggregation |
-| Code quality | 6/10 | Consistent patterns, TypeScript throughout, but no linting in CI, no API response validation, some implicit conventions (empty string bypass) |
-| Security posture | 4/10 | JWT auth works, bcrypt passwords, role-based access. But localStorage tokens, static JWT secret, no rate limiting, no CSRF, no security headers audit |
-| Scalability readiness | 3/10 | Single-instance everything. In-memory caches, no connection pooling config, no horizontal scaling story, on-the-fly analytics |
-| Documentation quality | 7/10 | 15 doc files covering architecture, governance, runbooks, testing. CI-enforced existence. But no API documentation (Swagger/OpenAPI), no inline JSDoc |
-| Test coverage | 2/10 | Only 2 backend spec files, 1 frontend test file. No E2E test suite in CI. Smoke scripts exist but are manual. |
-| Risk rating | HIGH | Single DB, no backups, no monitoring, weak tenant isolation, localStorage auth tokens |
+| Operational maturity | 6/10 | CI pipeline (tsc + build), database backup script, structured logging, audit trail interceptor. Still missing monitoring, alerting, APM, log aggregation. |
+| Code quality | 7/10 | Consistent patterns, TypeScript throughout, Swagger/OpenAPI docs, structured logging, feature registry pattern. Missing linting in CI, API response validation. |
+| Security posture | 5/10 | JWT auth, bcrypt, RBAC, rate limiting (100/60s), audit trail, XSS sanitization. Still localStorage tokens, static JWT secret, no CSRF. |
+| Scalability readiness | 4/10 | Materialized views for analytics, code splitting for frontend. Still single-instance, in-memory caches, no horizontal scaling. |
+| Documentation quality | 8/10 | 16+ doc files, CI-enforced, Swagger/OpenAPI at `/api/docs`, feature registry docs, updated runbooks. |
+| Test coverage | 3/10 | 3 backend spec files (42+ tests), feature-flag permutation tests. No E2E in CI. |
+| Risk rating | MEDIUM-HIGH | Rate limiting, backups, error boundaries, audit trail added. Single DB, no monitoring, weak tenant isolation remain. |
 
 ---
 
