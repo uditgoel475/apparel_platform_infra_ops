@@ -186,7 +186,7 @@ echo ""
 
 echo "5. Backend Feature Flags Endpoint"
 
-BACKEND_PORT="3000"
+BACKEND_PORT="3010"
 if [ -f "$ENV_FILE" ]; then
   PORT_VAL=$(grep "^PORT=" "$ENV_FILE" 2>/dev/null | cut -d'=' -f2- || true)
   if [ -n "$PORT_VAL" ]; then
